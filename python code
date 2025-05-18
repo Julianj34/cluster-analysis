@@ -1,0 +1,72 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+
+# Funktion zum Laden von Daten aus CSV-Dateien
+
+def load_data_from_csv(file_path):
+    df = pd.read_csv(file_path)
+    df.columns = df.columns.str.strip()
+    df['Open Time'] = pd.to_datetime(df['Open Time'])
+    df.set_index('Open Time', inplace=True)
+    numeric_columns = ['Close', 'High', 'Low', 'Volume']
+    for col in numeric_columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df.dropna()
+
+# Preisänderung in Prozent berechnen (für das gesamte Dataset)
+def calculate_price_changes(df):
+    df['PriceChange'] = df['Close'].pct_change() * 100
+    return df.dropna()
+
+# Torque Clustering Logik (universelle Version)
+def torque_clustering(data, threshold=5):
+    clusters = []
+    current_cluster = []
+    for change in data:
+        if len(current_cluster) == 0 or abs(change - np.mean(current_cluster)) < threshold:
+            current_cluster.append(change)
+        else:
+            clusters.append(current_cluster)
+            current_cluster = [change]
+    if current_cluster:
+        clusters.append(current_cluster)
+    return clusters
+
+# Hauptfunktion
+
+def main(file_path, threshold=5):
+    # Daten laden
+    data = load_data_from_csv(file_path)
+    data = calculate_price_changes(data)
+    
+    # Cluster identifizieren
+    price_changes = data['PriceChange']
+    clusters = torque_clustering(price_changes, threshold=threshold)
+    
+    # Cluster-Labels zuweisen
+    cluster_labels = np.empty(len(price_changes), dtype=int)
+    idx = 0
+    for cluster_num, cluster in enumerate(clusters):
+        for _ in cluster:
+            cluster_labels[idx] = cluster_num
+            idx += 1
+    data['Cluster'] = cluster_labels
+    
+    # Cluster-Visualisierung nach Zeit
+    plt.figure(figsize=(14, 4))
+    plt.scatter(data.index, data['PriceChange'], c=data['Cluster'], cmap='viridis', s=15)
+    plt.xlabel("Zeit")
+    plt.ylabel("Preisänderung (%)")
+    plt.title("Preisänderungen mit Cluster-Zugehörigkeit (Torque Clustering)")
+    plt.colorbar(label='Cluster')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+    
+    # (Optional) Auswertung: z.B. Mittelwert/Volatilität je Cluster anzeigen
+    cluster_stats = data.groupby('Cluster')['PriceChange'].agg(['count', 'mean', 'std', 'min', 'max'])
+    print(cluster_stats)
+
+
